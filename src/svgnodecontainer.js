@@ -1,4 +1,6 @@
 var SVGContainer = require('./svgcontainer');
+var svgToImg = require('svg-to-image');
+var reactIDRegex = /\s?data-reactid="[^"]+"/g;
 
 function SVGNodeContainer(node, _native) {
     this.src = node;
@@ -6,13 +8,19 @@ function SVGNodeContainer(node, _native) {
     var self = this;
 
     this.promise = _native ? new Promise(function(resolve, reject) {
-        self.image = new Image();
-        self.image.onload = resolve;
-        self.image.onerror = reject;
-        self.image.src = "data:image/svg+xml," + (new XMLSerializer()).serializeToString(node);
-        if (self.image.complete === true) {
-            resolve(self.image);
-        }
+        var sanitizedSVG = (new XMLSerializer()).serializeToString(node).replace(reactIDRegex, '');
+
+        svgToImg(sanitizedSVG, function(err, image) {
+            if (err) {
+                return reject(err);
+            }
+
+            self.image = image;
+
+            if (self.image.complete === true) {
+                resolve(self.image);
+            }
+        });
     }) : this.hasFabric().then(function() {
         return new Promise(function(resolve) {
             window.html2canvas.svg.fabric.parseSVGDocument(node, self.createCanvas.call(self, resolve));

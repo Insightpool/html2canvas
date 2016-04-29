@@ -47,5 +47,8 @@
     "sauceconnect": "tests/sauceconnect.js"
   },
   "homepage": "http://html2canvas.hertzen.com",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "svg-to-image": "^1.1.3"
+  }
 }

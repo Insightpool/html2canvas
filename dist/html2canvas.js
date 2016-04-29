@@ -6,6 +6,133 @@
 */
 
 (function(f){if(typeof exports==="object"&&typeof module!=="undefined"){module.exports=f()}else if(typeof define==="function"&&define.amd){define([],f)}else{var g;if(typeof window!=="undefined"){g=window}else if(typeof global!=="undefined"){g=global}else if(typeof self!=="undefined"){g=self}else{g=this}g.html2canvas = f()}})(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(_dereq_,module,exports){
+module.exports = loadImage;
+function loadImage (src, opt, callback) {
+  if (typeof opt === 'function') {
+    callback = opt;
+    opt = null;
+  }
+
+  var el = document.createElement('img');
+  var locked;
+
+  el.onload = function onLoaded () {
+    if (locked) return;
+    locked = true;
+
+    if (callback) callback(undefined, el);
+  };
+
+  el.onerror = function onError () {
+    if (locked) return;
+    locked = true;
+
+    if (callback) callback(new Error('Unable to load "' + src + '"'), el);
+  };
+
+  if (opt && opt.crossOrigin) {
+    el.crossOrigin = opt.crossOrigin;
+  }
+
+  el.src = src;
+
+  return el;
+}
+
+},{}],2:[function(_dereq_,module,exports){
+// shim for using process in browser
+
+var process = module.exports = {};
+var queue = [];
+var draining = false;
+var currentQueue;
+var queueIndex = -1;
+
+function cleanUpNextTick() {
+    draining = false;
+    if (currentQueue.length) {
+        queue = currentQueue.concat(queue);
+    } else {
+        queueIndex = -1;
+    }
+    if (queue.length) {
+        drainQueue();
+    }
+}
+
+function drainQueue() {
+    if (draining) {
+        return;
+    }
+    var timeout = setTimeout(cleanUpNextTick);
+    draining = true;
+
+    var len = queue.length;
+    while(len) {
+        currentQueue = queue;
+        queue = [];
+        while (++queueIndex < len) {
+            if (currentQueue) {
+                currentQueue[queueIndex].run();
+            }
+        }
+        queueIndex = -1;
+        len = queue.length;
+    }
+    currentQueue = null;
+    draining = false;
+    clearTimeout(timeout);
+}
+
+process.nextTick = function (fun) {
+    var args = new Array(arguments.length - 1);
+    if (arguments.length > 1) {
+        for (var i = 1; i < arguments.length; i++) {
+            args[i - 1] = arguments[i];
+        }
+    }
+    queue.push(new Item(fun, args));
+    if (queue.length === 1 && !draining) {
+        setTimeout(drainQueue, 0);
+    }
+};
+
+// v8 likes predictible objects
+function Item(fun, array) {
+    this.fun = fun;
+    this.array = array;
+}
+Item.prototype.run = function () {
+    this.fun.apply(null, this.array);
+};
+process.title = 'browser';
+process.browser = true;
+process.env = {};
+process.argv = [];
+process.version = ''; // empty string to avoid regexp issues
+process.versions = {};
+
+function noop() {}
+
+process.on = noop;
+process.addListener = noop;
+process.once = noop;
+process.off = noop;
+process.removeListener = noop;
+process.removeAllListeners = noop;
+process.emit = noop;
+
+process.binding = function (name) {
+    throw new Error('process.binding is not supported');
+};
+
+process.cwd = function () { return '/' };
+process.chdir = function (dir) {
+    throw new Error('process.chdir is not supported');
+};
+process.umask = function() { return 0; };
+
+},{}],3:[function(_dereq_,module,exports){
 (function (global){
 /*! https://mths.be/punycode v1.4.1 by @mathias */
 ;(function(root) {
@@ -542,7 +669,77 @@
 }(this));
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],2:[function(_dereq_,module,exports){
+},{}],4:[function(_dereq_,module,exports){
+(function (process){
+var loadImage = _dereq_('load-img')
+var noop = function () {}
+
+module.exports = svgToImage
+function svgToImage (svg, opt, cb) {
+  if (typeof opt === 'function') {
+    cb = opt
+    opt = {}
+  }
+  cb = cb || noop
+  opt = opt || {}
+
+  if (typeof window === 'undefined') {
+    return bail('window global is undefined; not in a browser')
+  }
+
+  var DOMURL = getURL()
+  if (!DOMURL ||
+    typeof DOMURL.createObjectURL !== 'function' ||
+    typeof DOMURL.revokeObjectURL !== 'function') {
+    return bail('browser does not support URL.createObjectURL')
+  }
+
+  if (typeof window.Blob === 'undefined') {
+    return bail('browser does not support Blob constructor')
+  }
+
+  if (!Array.isArray(svg)) {
+    svg = [ svg ]
+  }
+
+  var blob
+  try {
+    blob = new window.Blob(svg, {
+      type: 'image/svg+xml;charset=utf-8'
+    })
+  } catch (e) {
+    return bail(e)
+  }
+
+  var url = DOMURL.createObjectURL(blob)
+  loadImage(url, opt, function (err, img) {
+    DOMURL.revokeObjectURL(url)
+    if (err) {
+      // try again for Safari 8.0, using simple encodeURIComponent
+      // this will fail with DOM content but at least it works with SVG
+      var url2 = 'data:image/svg+xml,' + encodeURIComponent(svg.join(''))
+      return loadImage(url2, opt, cb)
+    }
+
+    cb(err, img)
+  })
+
+  function bail (msg) {
+    process.nextTick(function () {
+      cb(new Error(msg))
+    })
+  }
+}
+
+function getURL () {
+  return window.URL ||
+  window.webkitURL ||
+  window.mozURL ||
+  window.msURL
+}
+
+}).call(this,_dereq_('_process'))
+},{"_process":2,"load-img":1}],5:[function(_dereq_,module,exports){
 var log = _dereq_('./log');
 
 function restoreOwnerScroll(ownerDocument, x, y) {
@@ -648,7 +845,7 @@ module.exports = function(ownerDocument, containerDocument, width, height, optio
     });
 };
 
-},{"./log":13}],3:[function(_dereq_,module,exports){
+},{"./log":16}],6:[function(_dereq_,module,exports){
 // http://dev.w3.org/csswg/css-color/
 
 function Color(value) {
@@ -922,7 +1119,7 @@ var colors = {
 
 module.exports = Color;
 
-},{}],4:[function(_dereq_,module,exports){
+},{}],7:[function(_dereq_,module,exports){
 var Support = _dereq_('./support');
 var CanvasRenderer = _dereq_('./renderers/canvas');
 var ImageLoader = _dereq_('./imageloader');
@@ -1079,7 +1276,7 @@ function absoluteUrl(url) {
     return link;
 }
 
-},{"./clone":2,"./imageloader":11,"./log":13,"./nodecontainer":14,"./nodeparser":15,"./proxy":16,"./renderers/canvas":20,"./support":22,"./utils":26}],5:[function(_dereq_,module,exports){
+},{"./clone":5,"./imageloader":14,"./log":16,"./nodecontainer":17,"./nodeparser":18,"./proxy":19,"./renderers/canvas":23,"./support":25,"./utils":29}],8:[function(_dereq_,module,exports){
 var log = _dereq_('./log');
 var smallImage = _dereq_('./utils').smallImage;
 
@@ -1103,7 +1300,7 @@ function DummyImageContainer(src) {
 
 module.exports = DummyImageContainer;
 
-},{"./log":13,"./utils":26}],6:[function(_dereq_,module,exports){
+},{"./log":16,"./utils":29}],9:[function(_dereq_,module,exports){
 var smallImage = _dereq_('./utils').smallImage;
 
 function Font(family, size) {
@@ -1157,7 +1354,7 @@ function Font(family, size) {
 
 module.exports = Font;
 
-},{"./utils":26}],7:[function(_dereq_,module,exports){
+},{"./utils":29}],10:[function(_dereq_,module,exports){
 var Font = _dereq_('./font');
 
 function FontMetrics() {
@@ -1173,7 +1370,7 @@ FontMetrics.prototype.getMetrics = function(family, size) {
 
 module.exports = FontMetrics;
 
-},{"./font":6}],8:[function(_dereq_,module,exports){
+},{"./font":9}],11:[function(_dereq_,module,exports){
 var utils = _dereq_('./utils');
 var getBounds = utils.getBounds;
 var loadUrlDocument = _dereq_('./proxy').loadUrlDocument;
@@ -1206,7 +1403,7 @@ FrameContainer.prototype.proxyLoad = function(proxy, bounds, options) {
 
 module.exports = FrameContainer;
 
-},{"./core":4,"./proxy":16,"./utils":26}],9:[function(_dereq_,module,exports){
+},{"./core":7,"./proxy":19,"./utils":29}],12:[function(_dereq_,module,exports){
 function GradientContainer(imageData) {
     this.src = imageData.value;
     this.colorStops = [];
@@ -1229,7 +1426,7 @@ GradientContainer.REGEXP_COLORSTOP = /^\s*(rgba?\(\s*\d{1,3},\s*\d{1,3},\s*\d{1,
 
 module.exports = GradientContainer;
 
-},{}],10:[function(_dereq_,module,exports){
+},{}],13:[function(_dereq_,module,exports){
 function ImageContainer(src, cors) {
     this.src = src;
     this.image = new Image();
@@ -1250,7 +1447,7 @@ function ImageContainer(src, cors) {
 
 module.exports = ImageContainer;
 
-},{}],11:[function(_dereq_,module,exports){
+},{}],14:[function(_dereq_,module,exports){
 var log = _dereq_('./log');
 var ImageContainer = _dereq_('./imagecontainer');
 var DummyImageContainer = _dereq_('./dummyimagecontainer');
@@ -1409,7 +1606,7 @@ ImageLoader.prototype.timeout = function(container, timeout) {
 
 module.exports = ImageLoader;
 
-},{"./dummyimagecontainer":5,"./framecontainer":8,"./imagecontainer":10,"./lineargradientcontainer":12,"./log":13,"./proxyimagecontainer":17,"./svgcontainer":23,"./svgnodecontainer":24,"./utils":26,"./webkitgradientcontainer":27}],12:[function(_dereq_,module,exports){
+},{"./dummyimagecontainer":8,"./framecontainer":11,"./imagecontainer":13,"./lineargradientcontainer":15,"./log":16,"./proxyimagecontainer":20,"./svgcontainer":26,"./svgnodecontainer":27,"./utils":29,"./webkitgradientcontainer":30}],15:[function(_dereq_,module,exports){
 var GradientContainer = _dereq_('./gradientcontainer');
 var Color = _dereq_('./color');
 
@@ -1513,7 +1710,7 @@ LinearGradientContainer.REGEXP_DIRECTION = /^\s*(?:to|left|right|top|bottom|cent
 
 module.exports = LinearGradientContainer;
 
-},{"./color":3,"./gradientcontainer":9}],13:[function(_dereq_,module,exports){
+},{"./color":6,"./gradientcontainer":12}],16:[function(_dereq_,module,exports){
 var logger = function() {
     if (logger.options.logging && window.console && window.console.log) {
         Function.prototype.bind.call(window.console.log, (window.console)).apply(window.console, [(Date.now() - logger.options.start) + "ms", "html2canvas:"].concat([].slice.call(arguments, 0)));
@@ -1523,7 +1720,7 @@ var logger = function() {
 logger.options = {logging: false};
 module.exports = logger;
 
-},{}],14:[function(_dereq_,module,exports){
+},{}],17:[function(_dereq_,module,exports){
 var Color = _dereq_('./color');
 var utils = _dereq_('./utils');
 var getBounds = utils.getBounds;
@@ -1821,7 +2018,7 @@ function asFloat(str) {
 
 module.exports = NodeContainer;
 
-},{"./color":3,"./utils":26}],15:[function(_dereq_,module,exports){
+},{"./color":6,"./utils":29}],18:[function(_dereq_,module,exports){
 var log = _dereq_('./log');
 var punycode = _dereq_('punycode');
 var NodeContainer = _dereq_('./nodecontainer');
@@ -2692,7 +2889,7 @@ function hasUnicode(string) {
 
 module.exports = NodeParser;
 
-},{"./color":3,"./fontmetrics":7,"./log":13,"./nodecontainer":14,"./pseudoelementcontainer":18,"./stackingcontext":21,"./textcontainer":25,"./utils":26,"punycode":1}],16:[function(_dereq_,module,exports){
+},{"./color":6,"./fontmetrics":10,"./log":16,"./nodecontainer":17,"./pseudoelementcontainer":21,"./stackingcontext":24,"./textcontainer":28,"./utils":29,"punycode":3}],19:[function(_dereq_,module,exports){
 var XHR = _dereq_('./xhr');
 var utils = _dereq_('./utils');
 var log = _dereq_('./log');
@@ -2789,7 +2986,7 @@ exports.Proxy = Proxy;
 exports.ProxyURL = ProxyURL;
 exports.loadUrlDocument = loadUrlDocument;
 
-},{"./clone":2,"./log":13,"./utils":26,"./xhr":28}],17:[function(_dereq_,module,exports){
+},{"./clone":5,"./log":16,"./utils":29,"./xhr":31}],20:[function(_dereq_,module,exports){
 var ProxyURL = _dereq_('./proxy').ProxyURL;
 
 function ProxyImageContainer(src, proxy) {
@@ -2812,7 +3009,7 @@ function ProxyImageContainer(src, proxy) {
 
 module.exports = ProxyImageContainer;
 
-},{"./proxy":16}],18:[function(_dereq_,module,exports){
+},{"./proxy":19}],21:[function(_dereq_,module,exports){
 var NodeContainer = _dereq_('./nodecontainer');
 
 function PseudoElementContainer(node, parent, type) {
@@ -2852,7 +3049,7 @@ PseudoElementContainer.prototype.PSEUDO_HIDE_ELEMENT_CLASS_AFTER = "___html2canv
 
 module.exports = PseudoElementContainer;
 
-},{"./nodecontainer":14}],19:[function(_dereq_,module,exports){
+},{"./nodecontainer":17}],22:[function(_dereq_,module,exports){
 var log = _dereq_('./log');
 
 function Renderer(width, height, images, options, document) {
@@ -2962,7 +3159,7 @@ Renderer.prototype.renderBackgroundRepeating = function(container, bounds, image
 
 module.exports = Renderer;
 
-},{"./log":13}],20:[function(_dereq_,module,exports){
+},{"./log":16}],23:[function(_dereq_,module,exports){
 var Renderer = _dereq_('../renderer');
 var LinearGradientContainer = _dereq_('../lineargradientcontainer');
 var log = _dereq_('../log');
@@ -3145,7 +3342,7 @@ function hasEntries(array) {
 
 module.exports = CanvasRenderer;
 
-},{"../lineargradientcontainer":12,"../log":13,"../renderer":19}],21:[function(_dereq_,module,exports){
+},{"../lineargradientcontainer":15,"../log":16,"../renderer":22}],24:[function(_dereq_,module,exports){
 var NodeContainer = _dereq_('./nodecontainer');
 
 function StackingContext(hasOwnStacking, opacity, element, parent) {
@@ -3165,7 +3362,7 @@ StackingContext.prototype.getParentStack = function(context) {
 
 module.exports = StackingContext;
 
-},{"./nodecontainer":14}],22:[function(_dereq_,module,exports){
+},{"./nodecontainer":17}],25:[function(_dereq_,module,exports){
 function Support(document) {
     this.rangeBounds = this.testRangeBounds(document);
     this.cors = this.testCORS();
@@ -3218,7 +3415,7 @@ Support.prototype.testSVG = function() {
 
 module.exports = Support;
 
-},{}],23:[function(_dereq_,module,exports){
+},{}],26:[function(_dereq_,module,exports){
 var XHR = _dereq_('./xhr');
 var decode64 = _dereq_('./utils').decode64;
 
@@ -3272,8 +3469,10 @@ SVGContainer.prototype.decode64 = function(str) {
 
 module.exports = SVGContainer;
 
-},{"./utils":26,"./xhr":28}],24:[function(_dereq_,module,exports){
+},{"./utils":29,"./xhr":31}],27:[function(_dereq_,module,exports){
 var SVGContainer = _dereq_('./svgcontainer');
+var svgToImg = _dereq_('svg-to-image');
+var reactIDRegex = /\s?data-reactid="[^"]+"/g;
 
 function SVGNodeContainer(node, _native) {
     this.src = node;
@@ -3281,13 +3480,19 @@ function SVGNodeContainer(node, _native) {
     var self = this;
 
     this.promise = _native ? new Promise(function(resolve, reject) {
-        self.image = new Image();
-        self.image.onload = resolve;
-        self.image.onerror = reject;
-        self.image.src = "data:image/svg+xml," + (new XMLSerializer()).serializeToString(node);
-        if (self.image.complete === true) {
-            resolve(self.image);
-        }
+        var sanitizedSVG = (new XMLSerializer()).serializeToString(node).replace(reactIDRegex, '');
+
+        svgToImg(sanitizedSVG, function(err, image) {
+            if (err) {
+                return reject(err);
+            }
+
+            self.image = image;
+
+            if (self.image.complete === true) {
+                resolve(self.image);
+            }
+        });
     }) : this.hasFabric().then(function() {
         return new Promise(function(resolve) {
             window.html2canvas.svg.fabric.parseSVGDocument(node, self.createCanvas.call(self, resolve));
@@ -3299,7 +3504,7 @@ SVGNodeContainer.prototype = Object.create(SVGContainer.prototype);
 
 module.exports = SVGNodeContainer;
 
-},{"./svgcontainer":23}],25:[function(_dereq_,module,exports){
+},{"./svgcontainer":26,"svg-to-image":4}],28:[function(_dereq_,module,exports){
 var NodeContainer = _dereq_('./nodecontainer');
 
 function TextContainer(node, parent) {
@@ -3334,7 +3539,7 @@ function capitalize(m, p1, p2) {
 
 module.exports = TextContainer;
 
-},{"./nodecontainer":14}],26:[function(_dereq_,module,exports){
+},{"./nodecontainer":17}],29:[function(_dereq_,module,exports){
 exports.smallImage = function smallImage() {
     return "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 };
@@ -3505,7 +3710,7 @@ exports.parseBackgrounds = function(backgroundImage) {
     return results;
 };
 
-},{}],27:[function(_dereq_,module,exports){
+},{}],30:[function(_dereq_,module,exports){
 var GradientContainer = _dereq_('./gradientcontainer');
 
 function WebkitGradientContainer(imageData) {
@@ -3517,7 +3722,7 @@ WebkitGradientContainer.prototype = Object.create(GradientContainer.prototype);
 
 module.exports = WebkitGradientContainer;
 
-},{"./gradientcontainer":9}],28:[function(_dereq_,module,exports){
+},{"./gradientcontainer":12}],31:[function(_dereq_,module,exports){
 function XHR(url) {
     return new Promise(function(resolve, reject) {
         var xhr = new XMLHttpRequest();
@@ -3541,5 +3746,5 @@ function XHR(url) {
 
 module.exports = XHR;
 
-},{}]},{},[4])(4)
+},{}]},{},[7])(7)
 });
