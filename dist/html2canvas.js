@@ -2452,6 +2452,10 @@ NodeParser.prototype.paintFormValue = function(container) {
 };
 
 NodeParser.prototype.paintText = function(container) {
+    if (!container.applyTextTransform) {
+        return;
+    }
+
     container.applyTextTransform();
     var characters = punycode.ucs2.decode(container.node.data);
     var textList = (!this.options.letterRendering || noLetterSpacing(container)) && !hasUnicode(container.node.data) ? getWords(characters) : characters.map(function(character) {
@@ -3470,11 +3474,54 @@ SVGContainer.prototype.decode64 = function(str) {
 module.exports = SVGContainer;
 
 },{"./utils":29,"./xhr":31}],27:[function(_dereq_,module,exports){
+(function (global){
 var SVGContainer = _dereq_('./svgcontainer');
 var svgToImg = _dereq_('svg-to-image');
 var reactIDRegex = /\s?data-reactid="[^"]+"/g;
+var reactIDRegex = /\s?data-reactid="[^"]+"/g;
+var svgAttributes = [
+    'fill',
+    'font-family',
+    'font-size',
+    'stroke',
+    'stroke-width',
+    'text-anchor'
+];
+var svgAttrLength = svgAttributes.length;
+var computedStyleSupported = !!global.getComputedStyle;
+
+function applySVGAttributes(node) {
+    var computedStyle = computedStyleSupported ? window.getComputedStyle(node) : null;
+    var computedProperty;
+    var styleAttr = '';
+
+    if (computedStyle && computedStyle.length > 0) {
+        for (var i = 0; i < svgAttrLength; i++) {
+            styleAttr =  svgAttributes[ i ];
+            computedProperty = computedStyle.getPropertyValue(styleAttr);
+
+            if (!node.getAttribute(styleAttr) && computedProperty) {
+                switch (styleAttr) {
+                    case 'font-family':
+                        node.setAttribute(styleAttr, 'Arial');
+                        break;
+                    default:
+                        node.setAttribute(styleAttr, computedProperty);
+                }
+            }
+        }
+    }
+
+    if (node.children.length > 0) {
+        for (var k = 0; k < node.children.length; k++) {
+            applySVGAttributes(node.children[ k ]);
+        }
+    }
+}
 
 function SVGNodeContainer(node, _native) {
+    applySVGAttributes(node);
+
     this.src = node;
     this.image = null;
     var self = this;
@@ -3504,6 +3551,7 @@ SVGNodeContainer.prototype = Object.create(SVGContainer.prototype);
 
 module.exports = SVGNodeContainer;
 
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 },{"./svgcontainer":26,"svg-to-image":4}],28:[function(_dereq_,module,exports){
 var NodeContainer = _dereq_('./nodecontainer');
 
