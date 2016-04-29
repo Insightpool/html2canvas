@@ -3478,14 +3478,23 @@ module.exports = SVGContainer;
 var SVGContainer = _dereq_('./svgcontainer');
 var svgToImg = _dereq_('svg-to-image');
 var reactIDRegex = /\s?data-reactid="[^"]+"/g;
-var reactIDRegex = /\s?data-reactid="[^"]+"/g;
 var svgAttributes = [
+    'color',
+    'display',
     'fill',
+    'fill-opacity',
+    'height',
     'font-family',
     'font-size',
+    'opacity',
+    'overflow',
     'stroke',
+    'stroke-opacity',
     'stroke-width',
-    'text-anchor'
+    'text-anchor',
+    'text-decoration',
+    'transform',
+    'width'
 ];
 var svgAttrLength = svgAttributes.length;
 var computedStyleSupported = !!global.getComputedStyle;
