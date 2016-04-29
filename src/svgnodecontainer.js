@@ -48,7 +48,7 @@ function applySVGAttributes(node) {
         }
     }
 
-    if (node.children.length > 0) {
+    if (node.children && node.children.length > 0) {
         for (var k = 0; k < node.children.length; k++) {
             applySVGAttributes(node.children[ k ]);
         }
