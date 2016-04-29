@@ -3491,7 +3491,11 @@ var svgAttrLength = svgAttributes.length;
 var computedStyleSupported = !!global.getComputedStyle;
 
 function applySVGAttributes(node) {
-    var computedStyle = computedStyleSupported ? window.getComputedStyle(node) : null;
+    if (!computedStyleSupported) {
+        return;
+    }
+
+    var computedStyle = window.getComputedStyle(node);
     var computedProperty;
     var styleAttr = '';
 
